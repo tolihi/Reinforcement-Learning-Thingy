@@ -34,7 +34,15 @@ def ur5e():
             viewer.sync()
             time.sleep(0.002)
 
-def JointSpaceTrajectory():
+class JointSpaceTrajectory:
+    def __init__(self,start_joints, end_joints,steps):
+        self.start_joints = np.array(start_joints)
+        self.end_joints = np.array(end_joints)
+        self.steps = steps
+        self.step = (self.end_joints - self.start_joints)/self.steps
+
+
+
 def JointSpaceControl():
 
     model = mujoco.MjModel.from_xml_path("D:\\CS\\code\\.venv\\training\\mujoco_menagerie-main\\universal_robots_ur5e\\scene.xml")

@@ -3,12 +3,12 @@ import mujoco.viewer
 import time
 import numpy as np
 import ikpy.chain #作逆运动学求解
-import transform3d as tf
-from scipy.spatial.transform import Rotation as R, Slerp
+from scipy.spatial.transform import Rotation as R
 
-"""
+
+r"""
 def car():
-    model = mujoco.MjModel.from_xml_path('D:\桌面\mujoco-3.11.0-windows-x86_64\model\cards\cards.xml')
+    model = mujoco.MjModel.from_xml_path(r'D:\桌面\mujoco-3.11.0-windows-x86_64\model\cards\cards.xml')
     data = mujoco.MjData(model)
 
     #data.ctrl[0] = 0.0
@@ -20,7 +20,7 @@ def car():
             viewer.sync() #sync
 """
 def ur5e():
-    model = mujoco.MjModel.from_xml_path("D:\CS\code\.venv\\training\mujoco_menagerie-main\\universal_robots_ur5e\scene.xml")
+    model = mujoco.MjModel.from_xml_path(r"D:\CS\code\.venv\training\mujoco_menagerie-main\universal_robots_ur5e\scene.xml")
     data = mujoco.MjData(model)
 
     start_joints = np.array([-1.57, -1.34, 2.65, -1.3, 1.55, 0])
@@ -35,20 +35,27 @@ def ur5e():
             time.sleep(0.002)
 
 class JointSpaceTrajectory:
-    def __init__(self,start_joints, end_joints,steps):
-        self.start_joints = np.array(start_joints)
-        self.end_joints = np.array(end_joints)
+    def __init__(self, start_joints, end_joints, steps, duration=4.0):
+        self.start_joints = np.array(start_joints, dtype=float)
+        self.end_joints = np.array(end_joints, dtype=float)
         self.steps = steps
-        self.step = (self.end_joints - self.start_joints)/self.steps
+        self.duration = duration
+        self.step = (self.end_joints - self.start_joints) / self.steps
+        self.i = 0
 
+    def get_next_waypoint(self, sim_time):
+        target_i = int(min(sim_time / self.duration, 1.0) * self.steps)
+        if target_i > self.i:      # 只增不减，避免时间回退时抖动
+            self.i = target_i
+        return self.start_joints + self.step * self.i
 
 
 def JointSpaceControl():
 
-    model = mujoco.MjModel.from_xml_path("D:\\CS\\code\\.venv\\training\\mujoco_menagerie-main\\universal_robots_ur5e\\scene.xml")
+    model = mujoco.MjModel.from_xml_path(r"D:\CS\code\.venv\training\mujoco_menagerie-main\universal_robots_ur5e\scene.xml")
     data = mujoco.MjData(model)
 
-    mychain = ikpy.chain.Chain.from_mjcf_file("D:\\CS\\code\\.venv\\training\\mujoco_menagerie-main\\universal_robots_ur5e\\ur5e.xml",
+    mychain = ikpy.chain.Chain.from_mjcf_file(r"D:\CS\code\.venv\training\mujoco_menagerie-main\universal_robots_ur5e\ur5e.xml",
                                               active_links_mask=[False, False] + [True] * 6)
 
     start_joint = np.array([-1.57, -1.34, 2.65, -1.3, 1.55, 0])
@@ -58,14 +65,24 @@ def JointSpaceControl():
     ee_pos = [-0.13, 0.6, 0.1]
     ee_euler = [3.14, 0, 1.57]
     ref_pos = [0, 0, -1.57, -1.34, 2.65, -1.3, 1.55, 0]
-    ee_orientation = tf.euler.euler2mat(*ee_euler)
+    ee_orientation = R.from_euler('xyz', ee_euler).as_matrix()
+    print("ee_orientation =\n", np.round(ee_orientation, 4))
 
     # 根据目标位姿求解关节角
     joint_angle = mychain.inverse_kinematics(ee_pos, ee_orientation, "all", initial_position = ref_pos)
     end_joint = joint_angle[2:]
+    print("ik joints =", np.round(end_joint, 4))
+    traj = JointSpaceTrajectory(start_joint, end_joint, steps=200, duration=4.0)
+    data.ctrl[:6] = start_joint
+    mujoco.mj_forward(model, data)   # 让首帧姿态就是 start_joint
 
-def arm():
-    model = mujoco.MjModel.from_xml_path()
+    with mujoco.viewer.launch_passive(model, data) as viewer:
+        while viewer.is_running():
+            data.ctrl[:6] = traj.get_next_waypoint(data.time)
+            mujoco.mj_step(model, data)
+            viewer.sync()
+            time.sleep(0.002)
+
 
 if __name__ == "__main__":
-    ur5e()
+    JointSpaceControl()

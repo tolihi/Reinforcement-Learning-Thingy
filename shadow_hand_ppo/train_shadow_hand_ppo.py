@@ -194,7 +194,17 @@ class ShadowHandGraspEnv:
         lift = max(0.0, float(obj_pos[2]) - self.start_object_z)
         contacts = self._object_hand_contacts()
         smoothness_cost = 0.01 * float(np.square(action - self.prev_action).mean())
-        reward = 0.15 * float(proximity) + 25.0 * lift + 0.04 * min(contacts, 5)
+        # Proximity is only a small shaping signal: the old 0.15 coefficient
+        # paid roughly 0.75 every step even after the object had fallen.
+        # Make height and actual hand contact dominate the return instead.
+        lift_fraction = float(np.clip(lift / 0.06, 0.0, 1.0))
+        upward_speed = max(0.0, float(self.data.qvel[self.object_qvel_adr + 2]))
+        reward = (
+            0.02 * float(proximity)
+            + 0.10 * min(contacts, 5)
+            + 0.50 * lift_fraction
+            + 0.05 * min(upward_speed, 1.0)
+        )
         reward -= smoothness_cost
         self.prev_action = action.copy()
 
@@ -205,9 +215,9 @@ class ShadowHandGraspEnv:
         terminated = dropped or success
         truncated = self.step_count >= self.horizon
         if dropped:
-            reward -= 2.0
+            reward -= 5.0
         if success:
-            reward += 5.0
+            reward += 10.0
 
         info = {
             "object_height": float(obj_pos[2]),
@@ -388,6 +398,7 @@ def play(args):
             action, _, _ = agent.act(obs, deterministic=True)
             obs, _, terminated, truncated, info = env.step(action)
             viewer.sync()
+            time.sleep(0.0002)
             if terminated or truncated:
                 print(f"回合结束: success={info['success']}, height={info['object_height']:.3f} m")
                 obs = env.reset()

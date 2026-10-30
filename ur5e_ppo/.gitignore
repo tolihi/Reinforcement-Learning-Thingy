@@ -1,0 +1,9 @@
+__pycache__/
+*.py[cod]
+.venv/
+runs/**
+!runs/ppo_ur5e/
+!runs/ppo_ur5e/best_model.zip
+!runs/ppo_ur5e/learning_curve.png
+!runs/ppo_ur5e/demo.gif
+.mplcache/
